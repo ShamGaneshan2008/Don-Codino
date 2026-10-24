@@ -1,0 +1,13 @@
+{
+  "name": "don-codino-dev-tools",
+  "private": true,
+  "scripts": {
+    "format": "prettier --write app/static tests/frontend.test.mjs",
+    "format:check": "prettier --check app/static tests/frontend.test.mjs",
+    "check": "node --check app/static/app.js",
+    "test": "node --test tests/frontend.test.mjs"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3"
+  }
+}

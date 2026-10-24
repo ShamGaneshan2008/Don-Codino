@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#131411" />
+    <title>Don Codino · The Family Office</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard" aria-label="Don Codino home"
+        ><span class="crest">DC<span>✦</span></span
+        ><strong>DON CODINO<small>THE FAMILY OFFICE</small></strong></a
+      >
+      <div class="sidebar-rule"></div>
+      <span class="eyebrow nav-label">OUR AFFAIRS</span>
+      <nav aria-label="Main navigation">
+        <a class="active" href="#dashboard"
+          ><span class="nav-icon">◈</span>The Family<span class="nav-dot"></span
+        ></a>
+        <a href="#contract"><span class="nav-icon">＋</span>New Contract</a>
+        <a href="#history"><span class="nav-icon">▤</span>The Business</a>
+        <a href="#evidence"><span class="nav-icon">⌕</span>The Evidence</a>
+        <a href="#settings"><span class="nav-icon">⚙</span>The Consigliere</a>
+      </nav>
+      <div class="family-code">
+        <span class="eyebrow">THE FAMILY CODE</span>
+        <p>“You give the orders.<br />I make Codex an offer<br />it can’t refuse.”</p>
+        <div class="little-rule"></div>
+        <small>No bugs. No witnesses.<br />Only commits.</small>
+      </div>
+      <div class="local-badge">
+        <span class="status-dot"></span>
+        <div>Private office<small>RUNNING LOCALLY</small></div>
+        <span>↗</span>
+      </div>
+    </aside>
+
+    <main id="dashboard">
+      <header class="topbar">
+        <span>THE FAMILY <span class="slash">/</span> <b>OVERVIEW</b></span>
+        <div class="topbar-right"><span id="date"></span><span class="avatar">B</span></div>
+      </header>
+      <div class="content">
+        <section class="welcome">
+          <div>
+            <div class="eyebrow gold">DISCRETION. PRECISION. EXECUTION.</div>
+            <h1>Welcome to the family, <em>Boss.</em></h1>
+            <p>A little ambition. A clear instruction. We’ll handle the business.</p>
+          </div>
+          <div class="office-seal">D<span>EST. 2026</span></div>
+        </section>
+        <div id="notice" role="status" aria-live="polite" hidden></div>
+        <section class="stats" aria-label="Office overview">
+          <article>
+            <span class="eyebrow">TOTAL CONTRACTS</span>
+            <div><strong id="total">0</strong><span class="stat-symbol">▤</span></div>
+            <small>Every order, on the record</small>
+          </article>
+          <article>
+            <span class="eyebrow">BUSINESS CONCLUDED</span>
+            <div><strong id="passed">0</strong><span class="stat-symbol">✓</span></div>
+            <small>Executed and verified</small>
+          </article>
+          <article>
+            <span class="eyebrow">ACTIVE OPERATIONS</span>
+            <div><strong id="running">0</strong><span class="stat-symbol">◷</span></div>
+            <small>The family is on the job</small>
+          </article>
+          <article>
+            <span class="eyebrow">OUR ASSOCIATE</span>
+            <div>
+              <strong class="small-stat" id="codex-status">Checking</strong
+              ><span class="stat-symbol">⌘</span>
+            </div>
+            <small id="codex-detail">Connecting to Codex CLI</small>
+          </article>
+        </section>
+
+        <div class="office-grid">
+          <section class="panel contract-panel" id="contract">
+            <div class="panel-heading">
+              <span class="eyebrow gold">A NEW CONTRACT</span
+              ><span class="classified">FOR YOUR EYES ONLY</span>
+            </div>
+            <h2>What business shall we<br />handle today, Boss?</h2>
+            <p class="muted">Give the order. Review the plan. Make it happen.</p>
+            <form id="contract-form">
+              <label class="field-label" for="request">THE INSTRUCTION</label>
+              <textarea
+                id="request"
+                required
+                minlength="3"
+                maxlength="12000"
+                rows="5"
+                placeholder="Tell Don Codino what needs to be done..."
+              ></textarea>
+              <div class="workspace-row">
+                <label for="workspace"
+                  ><span class="field-label">THE TERRITORY</span
+                  ><select id="workspace" required>
+                    <option value="">Select an approved workspace</option>
+                  </select></label
+                ><span class="workspace-note">◈ &nbsp; Allowlisted workspaces only</span>
+              </div>
+              <div class="actions">
+                <button type="submit" id="refine" class="button gold-button">
+                  REFINE THE PLAN <span>↗</span></button
+                ><span class="mode" id="mode">TEMPLATE MODE</span>
+              </div>
+            </form>
+            <div id="plan-panel" hidden>
+              <div class="plan-heading">
+                <label class="field-label" for="prompt">THE PLAN · EDIT BEFORE APPROVAL</label
+                ><button class="text-button" id="copy" type="button">COPY PROMPT</button>
+              </div>
+              <textarea id="prompt" rows="10" maxlength="24000"></textarea
+              ><label class="approval"
+                ><input type="checkbox" id="approval" /> I approve this plan to modify the selected
+                workspace.</label
+              ><button class="button gold-button" id="execute" type="button" disabled>
+                MAKE AN OFFER <span>↗</span>
+              </button>
+            </div>
+            <div class="contract-footer">
+              <span>◇</span> Your approval starts the operation. No automatic repairs.
+            </div>
+          </section>
+
+          <section class="panel pipeline-panel">
+            <div class="panel-heading">
+              <span class="eyebrow">THE OPERATION</span
+              ><span class="live-label"><span class="status-dot"></span> LIVE STATUS</span>
+            </div>
+            <h3>A matter of process.</h3>
+            <p class="muted">Every step. Nothing under the table.</p>
+            <ol id="pipeline">
+              <li>
+                <span class="step-number">01</span>
+                <div><strong>The Meeting</strong><small>Understanding the request</small></div>
+                <span class="step-state">—</span>
+              </li>
+              <li>
+                <span class="step-number">02</span>
+                <div><strong>The Plan</strong><small>Preparing the instructions</small></div>
+                <span class="step-state">—</span>
+              </li>
+              <li>
+                <span class="step-number">03</span>
+                <div><strong>The Hitman</strong><small>Codex takes care of business</small></div>
+                <span class="step-state">—</span>
+              </li>
+              <li>
+                <span class="step-number">04</span>
+                <div><strong>The Cleanup</strong><small>Isolated tests and lint</small></div>
+                <span class="step-state">—</span>
+              </li>
+              <li>
+                <span class="step-number">05</span>
+                <div><strong>The Inspection</strong><small>Checking the files and diff</small></div>
+                <span class="step-state">—</span>
+              </li>
+              <li>
+                <span class="step-number">06</span>
+                <div><strong>The Verdict</strong><small>An honest final report</small></div>
+                <span class="step-state">—</span>
+              </li>
+            </ol>
+            <div class="pipeline-footer">
+              <span class="status-dot"></span
+              ><span id="operation-state">Awaiting your orders.</span>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel history-panel" id="history">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow gold">THE BUSINESS</span>
+              <h3>The ledger.</h3>
+            </div>
+            <button class="text-button" id="refresh" type="button">REFRESH ↻</button>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>CONTRACT</th>
+                  <th>TERRITORY</th>
+                  <th>OPENED</th>
+                  <th>VERDICT</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="history-body">
+                <tr>
+                  <td colspan="5" class="empty-state">
+                    A clean ledger. Your first contract starts above.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel evidence-panel" id="evidence">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow gold">THE EVIDENCE</span>
+              <h3>Nothing left to guess.</h3>
+            </div>
+            <button class="button danger-button" id="cancel" type="button" hidden>
+              CANCEL CONTRACT
+            </button>
+          </div>
+          <p class="muted" id="task-message">
+            Select a contract in the ledger to inspect the full record.
+          </p>
+          <div class="evidence-tabs" role="tablist" aria-label="Task evidence">
+            <button
+              class="selected"
+              role="tab"
+              id="logs-tab"
+              aria-selected="true"
+              aria-controls="logs"
+              data-tab="logs"
+            >
+              Process log</button
+            ><button
+              role="tab"
+              id="diff-tab"
+              aria-selected="false"
+              aria-controls="diff"
+              data-tab="diff"
+            >
+              Changed files &amp; diff</button
+            ><button
+              role="tab"
+              id="verification-tab"
+              aria-selected="false"
+              aria-controls="verification"
+              data-tab="verification"
+            >
+              Verification</button
+            ><button
+              role="tab"
+              id="approved-plan-tab"
+              aria-selected="false"
+              aria-controls="approved-plan"
+              data-tab="approved-plan"
+            >
+              Approved plan
+            </button>
+          </div>
+          <pre id="logs" role="tabpanel" aria-labelledby="logs-tab">No process events yet.</pre>
+          <pre id="diff" role="tabpanel" aria-labelledby="diff-tab" hidden>No diff yet.</pre>
+          <pre id="verification" role="tabpanel" aria-labelledby="verification-tab" hidden>
+NOT RUN</pre
+          >
+          <pre id="approved-plan" role="tabpanel" aria-labelledby="approved-plan-tab" hidden>
+No contract selected.</pre
+          >
+        </section>
+
+        <section class="panel settings-panel" id="settings">
+          <div>
+            <span class="eyebrow gold">THE CONSIGLIERE</span>
+            <h3>The house rules.</h3>
+          </div>
+          <dl>
+            <div>
+              <dt>Workspace root</dt>
+              <dd id="root">Checking…</dd>
+            </div>
+            <div>
+              <dt>Verification</dt>
+              <dd id="isolation">Checking…</dd>
+            </div>
+            <div>
+              <dt>Configuration</dt>
+              <dd>Update .env and restart the server.</dd>
+            </div>
+          </dl>
+        </section>
+        <footer>
+          <span>DON CODINO <span class="footer-sep">/</span> THE GODFATHER OF LAZY DEVELOPERS</span
+          ><span>Good business is personal.</span>
+        </footer>
+      </div>
+    </main>
+  </body>
+</html>

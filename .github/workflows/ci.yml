@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Python ${{ matrix.python }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Lint
+        run: python -m ruff check .
+      - name: Formatting
+        run: python -m ruff format --check .
+      - name: Tests
+        run: python -m pytest -q -W error
+      - name: JavaScript syntax
+        run: node --check app/static/app.js
+      - name: Install frontend formatting tools
+        run: npm ci --ignore-scripts
+      - name: Frontend formatting
+        run: npm run format:check
+      - name: Frontend behavior tests
+        run: npm test
+
+  isolated-verification:
+    name: Real offline Docker verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - run: docker build -t don-codino-verifier:local verification
+      - name: Calculator acceptance verification
+        run: python -m pytest tests/test_verifier.py -q
+        env:
+          DON_DOCKER_TESTS: '1'

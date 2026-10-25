@@ -8,6 +8,7 @@ let logText = "";
 let busy = false;
 let selectionVersion = 0;
 let detailVersion = 0;
+let currentPlan = null;
 const eventIds = new Set();
 
 function notify(message) {
@@ -40,9 +41,11 @@ function resetApproval() {
 }
 
 function invalidatePlan() {
+  currentPlan = null;
   resetApproval();
   $("plan-panel").hidden = true;
   $("prompt").value = "";
+  $("context-preview").textContent = "Repository context will appear after refinement.";
 }
 
 function setBusy(value) {
@@ -55,7 +58,8 @@ function setBusy(value) {
 }
 
 function renderTask(task) {
-  $("operation-state").textContent = `${task.status} · ${task.id.slice(0, 8)}`;
+  $("operation-state").textContent =
+    `${task.execution?.state || task.status} · ${task.id.slice(0, 8)}`;
   $("task-message").textContent =
     `${task.message || "The family is handling your request."}\nCodex exit: ${task.exit_code ?? "NOT RUN"} · Verification: ${task.verification.status}`;
   $("cancel").hidden = task.status !== "RUNNING";
@@ -99,6 +103,9 @@ async function refreshTask(taskId = selectedTask) {
   const version = ++detailVersion;
   const task = await api(`/api/tasks/${taskId}`);
   if (selectedTask === taskId && version === detailVersion) renderTask(task);
+  if (selectedTask === taskId && version === detailVersion && task.execution) {
+    $("execution-record").textContent = JSON.stringify(task.execution, null, 2);
+  }
 }
 
 async function selectTask(taskId) {
@@ -121,7 +128,8 @@ async function selectTask(taskId) {
     logText = logText.slice(-256000);
     $("logs").textContent = logText;
     $("logs").scrollTop = $("logs").scrollHeight;
-    if (data.kind === "stage") refreshTask(taskId).catch((error) => notify(error.message));
+    if (data.kind === "stage" || data.kind === "state")
+      refreshTask(taskId).catch((error) => notify(error.message));
   };
   source.addEventListener("done", async () => {
     source.close();
@@ -201,12 +209,18 @@ $("contract-form").addEventListener("submit", async (event) => {
       workspace: $("workspace").value,
     });
     $("prompt").value = data.prompt;
+    currentPlan = data.plan_id
+      ? { id: data.plan_id, revision: data.revision, prompt: data.prompt, approved: false }
+      : null;
+    $("context-preview").textContent = data.context
+      ? JSON.stringify({ structured_plan: data.structured, context: data.context }, null, 2)
+      : "No repository context supplied by this server.";
     $("plan-panel").hidden = false;
     $("mode").textContent = `${data.mode.toUpperCase()} MODE`;
     resetApproval();
     notify(
       data.mode === "template"
-        ? "Plan ready. Template mode uses project filenames and fixed constraints; no AI model was used."
+        ? "Plan saved. Template mode uses repository symbols and fixed constraints; no AI model was used."
         : "AI-refined plan ready. Review and edit it before approval.",
     );
   } catch (error) {
@@ -226,12 +240,39 @@ $("execute").addEventListener("click", async () => {
   if (busy || !$("approval").checked || !$("prompt").value.trim()) return;
   setBusy(true);
   try {
-    const task = await api("/api/tasks", {
-      request: $("request").value,
-      workspace: $("workspace").value,
-      prompt: $("prompt").value,
-      approved: true,
-    });
+    if (currentPlan?.executed) throw new Error("Refine a new plan before another execution.");
+    let task;
+    if (currentPlan) {
+      if ($("prompt").value !== currentPlan.prompt) {
+        const revision = await api(`/api/v1/plans/${currentPlan.id}/revisions`, {
+          revision: currentPlan.revision,
+          prompt: $("prompt").value,
+        });
+        currentPlan.revision = revision.revision;
+        currentPlan.prompt = revision.prompt;
+        currentPlan.approved = false;
+      }
+      if (!currentPlan.approved) {
+        await api(`/api/v1/plans/${currentPlan.id}/approve`, {
+          revision: currentPlan.revision,
+          approved: true,
+        });
+        currentPlan.approved = true;
+      }
+      task = await api(`/api/v1/plans/${currentPlan.id}/execute`, {
+        revision: currentPlan.revision,
+        approved: true,
+        max_repairs: $("allow-repair").checked ? 2 : 0,
+      });
+      currentPlan.executed = true;
+    } else {
+      task = await api("/api/tasks", {
+        request: $("request").value,
+        workspace: $("workspace").value,
+        prompt: $("prompt").value,
+        approved: true,
+      });
+    }
     resetApproval();
     notify("The family is handling your request.");
     await selectTask(task.id);
@@ -266,6 +307,19 @@ $("cancel").addEventListener("click", async () => {
   }
 });
 $("refresh").addEventListener("click", () => loadHistory().catch((error) => notify(error.message)));
+$("load-memory").addEventListener("click", async () => {
+  try {
+    if (!$("workspace").value) throw new Error("Select an approved workspace first.");
+    const result = await api(
+      `/api/v1/memory?selection=${encodeURIComponent($("workspace").value)}`,
+    );
+    $("memory-records").textContent = result.items.length
+      ? JSON.stringify(result.items, null, 2)
+      : "No current verified outcomes for this repository and dependency fingerprint.";
+  } catch (error) {
+    notify(error.message);
+  }
+});
 document.querySelectorAll("[data-tab]").forEach((button) =>
   button.addEventListener("click", () => {
     document.querySelectorAll("[data-tab]").forEach((other) => {
@@ -284,10 +338,27 @@ document.querySelectorAll("nav a").forEach((link) =>
   }),
 );
 
+async function loadWorkspaces() {
+  const discovery = await api("/api/workspaces");
+  $("root").textContent = discovery.workspace_root;
+  for (const option of [...$("workspace").children].slice(1)) option.remove();
+  for (const workspace of discovery.workspaces) {
+    const option = document.createElement("option");
+    option.value = workspace.path;
+    option.textContent = workspace.name;
+    $("workspace").append(option);
+  }
+  if (!discovery.workspaces.length)
+    notify(
+      `No approved Git workspaces found in ${discovery.workspace_root}. Initialize a direct child folder with git init, then reload this page.`,
+    );
+}
+
 async function boot() {
   $("date").textContent = new Date()
     .toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
     .toUpperCase();
+  await loadWorkspaces();
   await loadHistory();
   settings = await api("/api/settings");
   $("root").textContent = settings.workspace_root;
@@ -295,17 +366,7 @@ async function boot() {
   $("codex-status").textContent = settings.codex.available ? "Available" : "Unavailable";
   $("codex-detail").textContent = settings.codex.message;
   $("mode").textContent = `${settings.prompt_mode.toUpperCase()} MODE`;
-  for (const workspace of settings.workspaces) {
-    const option = document.createElement("option");
-    option.value = workspace.path;
-    option.textContent = workspace.name;
-    $("workspace").append(option);
-  }
-  if (!settings.workspaces.length)
-    notify(
-      "No approved workspace yet. Follow the sample workspace setup in README.md, then reload this page.",
-    );
-  else if (!settings.codex.available)
+  if (settings.workspaces.length && !settings.codex.available)
     notify(
       `Our associate Codex is unavailable. ${settings.codex.message} You can still refine and copy a plan.`,
     );

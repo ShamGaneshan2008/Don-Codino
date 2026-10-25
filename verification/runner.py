@@ -2,9 +2,11 @@
 
 import io
 import json
+import re
 import subprocess
 import sys
 import tarfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 root = Path("/workspace")
@@ -24,21 +26,50 @@ with tarfile.open(fileobj=io.BytesIO(data)) as archive:
 def check(command):
     # Spool to disk so a noisy test cannot exhaust the runner's Python heap.
     log = Path("/tmp") / ("pytest.log" if "pytest" in command else "ruff.log")  # noqa: S108
+    error_log = log.with_suffix(".stderr")
+    started = datetime.now(UTC).isoformat()
     try:
-        with log.open("wb") as output:
+        with log.open("wb") as output, error_log.open("wb") as errors:
             completed = subprocess.run(  # noqa: S603
                 command,
                 cwd=root,
                 stdout=output,
-                stderr=subprocess.STDOUT,
+                stderr=errors,
                 timeout=120,
                 check=False,
             )
         with log.open("rb") as output:
-            text = output.read(80_000).decode("utf-8", errors="replace")
-        return {"exit_code": completed.returncode, "output": text}
+            stdout = output.read(16000).decode("utf-8", errors="replace")
+        with error_log.open("rb") as errors:
+            stderr = errors.read(8000).decode("utf-8", errors="replace")
+        text = stdout + stderr
+        counts = {
+            name: int(match.group(1))
+            for name in ("passed", "failed", "skipped")
+            if (match := re.search(r"(\d+) " + name, text))
+        }
+        return {
+            "exit_code": completed.returncode,
+            "output": text,
+            "stdout": stdout,
+            "stderr": stderr,
+            "command": command,
+            "cwd": str(root),
+            "environment": "offline unprivileged Linux container",
+            "started_at": started,
+            "ended_at": datetime.now(UTC).isoformat(),
+            "counts_from_summary": counts,
+            "truncated": log.stat().st_size > 16000 or error_log.stat().st_size > 8000,
+        }
     except subprocess.TimeoutExpired:
-        return {"exit_code": 124, "output": "Verification exceeded 120 seconds."}
+        return {
+            "exit_code": 124,
+            "output": "Verification exceeded 120 seconds.",
+            "command": command,
+            "cwd": str(root),
+            "started_at": started,
+            "ended_at": datetime.now(UTC).isoformat(),
+        }
 
 
 print(

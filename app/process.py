@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 OUTPUT_LIMIT = 256_000
@@ -15,6 +16,10 @@ OUTPUT_LIMIT = 256_000
 class Result:
     code: int
     output: str
+    stdout: str = ""
+    stderr: str = ""
+    started_at: str = ""
+    ended_at: str = ""
 
 
 async def stop(process):
@@ -63,24 +68,27 @@ async def run(
             "start_new_session": True,
         }
     )
+    started_at = datetime.now(UTC).isoformat()
     process = await asyncio.create_subprocess_exec(
         *args,
         cwd=cwd,
         env=env,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
+        stderr=asyncio.subprocess.PIPE,
         **options,
     )
     output = bytearray()
+    stdout, stderr = bytearray(), bytearray()
     truncated = False
 
-    async def consume():
+    async def consume(stream, separate):
         nonlocal truncated
         pending = bytearray()
-        while chunk := await process.stdout.read(4096):
+        while chunk := await stream.read(4096):
             remaining = OUTPUT_LIMIT - len(output)
             output.extend(chunk[:remaining])
+            separate.extend(chunk[:remaining])
             # Emit complete lines so secrets split across pipe reads are redacted together.
             if emit and remaining > 0:
                 pending.extend(chunk[:remaining])
@@ -106,7 +114,9 @@ async def run(
             process.stdin.close()
 
     async def communicate():
-        await asyncio.gather(consume(), feed(), process.wait())
+        await asyncio.gather(
+            consume(process.stdout, stdout), consume(process.stderr, stderr), feed(), process.wait()
+        )
 
     io = asyncio.create_task(communicate())
     cancelled = asyncio.create_task(cancel.wait()) if cancel else None
@@ -129,4 +139,11 @@ async def run(
             io.cancel()
         await asyncio.gather(io, *([cancelled] if cancelled else []), return_exceptions=True)
     suffix = "\n[Output truncated at 256 KB]" if truncated else ""
-    return Result(process.returncode, output.decode("utf-8", errors="replace") + suffix)
+    return Result(
+        process.returncode,
+        output.decode("utf-8", errors="replace") + suffix,
+        stdout.decode("utf-8", errors="replace"),
+        stderr.decode("utf-8", errors="replace"),
+        started_at,
+        datetime.now(UTC).isoformat(),
+    )

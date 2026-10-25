@@ -25,6 +25,7 @@
         <a href="#history"><span class="nav-icon">▤</span>The Business</a>
         <a href="#evidence"><span class="nav-icon">⌕</span>The Evidence</a>
         <a href="#settings"><span class="nav-icon">⚙</span>The Consigliere</a>
+        <a href="#vault"><span class="nav-icon">▤</span>The Vault</a>
       </nav>
       <div class="family-code">
         <span class="eyebrow">THE FAMILY CODE</span>
@@ -117,7 +118,14 @@
                 <label class="field-label" for="prompt">THE PLAN · EDIT BEFORE APPROVAL</label
                 ><button class="text-button" id="copy" type="button">COPY PROMPT</button>
               </div>
-              <textarea id="prompt" rows="10" maxlength="24000"></textarea
+              <textarea id="prompt" rows="10" maxlength="24000"></textarea>
+              <details>
+                <summary class="field-label">REPOSITORY CONTEXT &amp; STRUCTURED PLAN</summary>
+                <pre id="context-preview">Repository context will appear after refinement.</pre>
+              </details>
+              <label class="approval"
+                ><input type="checkbox" id="allow-repair" /> Authorize up to two focused repairs of
+                failed checks within this plan's scope. </label
               ><label class="approval"
                 ><input type="checkbox" id="approval" /> I approve this plan to modify the selected
                 workspace.</label
@@ -126,7 +134,8 @@
               </button>
             </div>
             <div class="contract-footer">
-              <span>◇</span> Your approval starts the operation. No automatic repairs.
+              <span>◇</span> Your approval starts the operation. Repairs require the separate
+              opt-in.
             </div>
           </section>
 
@@ -284,6 +293,28 @@ No contract selected.</pre
               <dd>Update .env and restart the server.</dd>
             </div>
           </dl>
+        </section>
+        <section class="panel evidence-panel" id="vault">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow gold">THE VAULT</span>
+              <h3>Evidence, on the record.</h3>
+            </div>
+            <button class="text-button" id="load-memory" type="button">
+              LOAD REPOSITORY MEMORY
+            </button>
+          </div>
+          <p class="muted">
+            Only verified outcomes from the selected repository with matching dependency
+            fingerprints are retrieved. Records expire after 30 days.
+          </p>
+          <pre id="memory-records">Select a workspace and load its verified outcomes.</pre>
+          <details>
+            <summary class="field-label">EXECUTION, REVIEW &amp; SECURITY EVIDENCE</summary>
+            <pre id="execution-record">
+Select a contract to inspect its persisted execution record.</pre
+            >
+          </details>
         </section>
         <footer>
           <span>DON CODINO <span class="footer-sep">/</span> THE GODFATHER OF LAZY DEVELOPERS</span

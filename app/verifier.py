@@ -104,7 +104,7 @@ async def verify(settings: Settings, workspace: Path, cancel: asyncio.Event, emi
         try:
             # The trusted entrypoint prints one JSON line. Docker itself may write
             # configuration warnings before it on the merged stdout/stderr pipe.
-            diagnostics, _, report_line = result.output.strip().rpartition("\n")
+            diagnostics, _, report_line = (result.stdout or result.output).strip().rpartition("\n")
             report = json.loads(report_line)
         except json.JSONDecodeError:
             return {"status": "BLOCKED", "message": result.output or "No verifier report returned."}

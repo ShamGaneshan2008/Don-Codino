@@ -3,6 +3,74 @@ import asyncio
 from app import codex_runner
 
 
+def test_documented_asgi_factory_retains_application_routes(settings):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from uvicorn.importer import import_from_string
+
+    factory = import_from_string("app.main:create_app")
+    application = factory(settings)
+    assert isinstance(application, FastAPI)
+    paths = {route.path for route in application.routes}
+    assert {"/health", "/", "/static", "/api/tasks", "/api/workspaces", "/api/settings"} <= paths
+    with TestClient(application, base_url="http://127.0.0.1") as client:
+        assert client.get("/health").status_code == 200
+        assert "DON CODINO" in client.get("/").text
+
+
+def test_workspace_discovery_and_selection(client, settings, workspace):
+    target = workspace.rename(settings.workspace_root / "calculator-test")
+    (settings.workspace_root / "not-git").mkdir()
+    (settings.workspace_root / "plain-file").write_text("not a workspace")
+    response = client.get("/api/workspaces")
+    assert response.status_code == 200
+    assert response.json() == {
+        "workspace_root": str(settings.workspace_root),
+        "workspaces": [{"name": "calculator-test", "path": str(target)}],
+    }
+    for selection in ("calculator-test", response.json()["workspaces"][0]["path"]):
+        result = client.post(
+            "/api/prompts/enhance",
+            json={"request": "Build calculator", "workspace": selection},
+        )
+        assert result.status_code == 200
+        assert result.json()["mode"] == "template"
+
+
+def test_workspace_discovery_does_not_require_tool_checks(client, monkeypatch):
+    async def unavailable(_):
+        raise AssertionError("Discovery must not probe Codex or Docker")
+
+    from app import verifier
+
+    monkeypatch.setattr(codex_runner, "availability", unavailable)
+    monkeypatch.setattr(verifier, "availability", unavailable)
+    assert client.get("/api/workspaces").json()["workspaces"][0]["name"] == "calculator"
+
+
+def test_workspace_discovery_handles_missing_root(client, settings, workspace):
+    settings.workspace_root.rename(settings.workspace_root.with_name("moved-workspaces"))
+    assert client.get("/api/workspaces").json()["workspaces"] == []
+
+
+def test_workspace_selection_revalidates_paths(client, settings, workspace, tmp_path):
+    nested = workspace / "nested"
+    nested.mkdir()
+    for selection in ("..", str(tmp_path), ".", "calculator/nested", "missing"):
+        for endpoint in ("/api/prompts/enhance", "/api/tasks"):
+            payload = {"request": "Build calculator", "workspace": selection}
+            if endpoint == "/api/tasks":
+                payload.update(prompt="Approved plan", approved=True)
+            assert client.post(endpoint, json=payload).status_code == 400
+    workspace.rename(settings.workspace_root / "renamed")
+    assert (
+        client.post(
+            "/api/prompts/enhance", json={"request": "Build calculator", "workspace": "calculator"}
+        ).status_code
+        == 400
+    )
+
+
 def test_health_and_ui(client):
     assert client.get("/health").json()["status"] == "ok"
     assert "DON CODINO" in client.get("/").text

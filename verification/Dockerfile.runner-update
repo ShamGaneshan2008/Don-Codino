@@ -1,0 +1,4 @@
+# Refresh only the trusted entrypoint of an already prepared local image.
+# Build: docker build -f verification/Dockerfile.runner-update -t don-codino-verifier:v2-validation verification
+FROM don-codino-verifier:local
+COPY runner.py /opt/don-codino/runner.py

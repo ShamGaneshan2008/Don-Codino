@@ -9,16 +9,38 @@ real Codex CLI after your approval, inspects the Git diff, verifies Python proje
 Docker container, and keeps the evidence in SQLite. The charcoal, gold, and ivory dashboard
 displays backend events and real results. Template refinement works without an API key.
 
+## Operation Famiglia — V2 development increment
+
+This is an incremental V2 foundation, not a completed V2 release. See
+[implementation status](IMPLEMENTATION_STATUS.md), [actual validation](MASTER_VALIDATION_REPORT.md),
+and [architecture](docs/ARCHITECTURE.md). Existing task history, factory and API remain.
+
+The dashboard now saves repository-aware structured plans and context manifests, versions
+edits, binds explicit approval to the exact prompt hash, and consumes approval atomically.
+V2 contracts record explicit workflow transitions, invocation/session/usage evidence,
+each verification attempt, a separate read-only Codex review and static security findings.
+Repairs require a separate opt-in, maximum two; changing tests/check configuration during
+repair blocks the contract. The Vault retrieves repository-specific verified outcomes,
+with evidence provenance, dependency fingerprints and expiry. Run `python scripts/doctor.py`
+for real local diagnostics. New endpoints are documented in [docs/API.md](docs/API.md).
+
+The old `/api/tasks` interface keeps its original verification behavior and disables repairs.
+Its PASS does not imply independent V2 review. Even V2 PASS is not release certification:
+dependency auditing, broader language checks, full GitHub write automation, durable scheduling,
+automatic resume and remote CI verification remain incomplete. No changes are committed,
+pushed, published or merged automatically. See [testing](docs/TESTING.md) and
+[security boundaries](docs/SECURITY.md) before running real contracts.
+
 ## Windows PowerShell setup
 
 Install Python 3.12+, Git, and the native Codex CLI. Docker Desktop with Linux containers is
 required for isolated verification. Node.js is needed only for frontend development checks.
 
 ```powershell
-Set-Location C:\Users\susee\VS_CODE_PROJECT\Don-Codino
-py -3.12 -m venv .venv
+Set-Location "C:\Users\susee\VScode Project\Don-Codino"
+py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 codex login
 codex login status
 docker build -t don-codino-verifier:local verification
@@ -29,29 +51,33 @@ For the workspace-local portable runtime created during development, use
 `.\.tools\python\python.exe` in place of `.\.venv\Scripts\python.exe`; no activation is needed.
 The portable runtime and installed dependencies are ignored by Git.
 
-Create a disposable workspace, once:
+For this Windows setup, set `DON_WORKSPACE_ROOT=C:/DonCodinoWorkspaces` in `.env`.
+Create a disposable workspace once (the current `calculator-test` folder is already initialized):
 
 ```powershell
-New-Item -ItemType Directory -Path .\workspaces\calculator
-Copy-Item .\sample_workspace\README.md .\workspaces\calculator\README.md
-git -C .\workspaces\calculator init
-git -C .\workspaces\calculator add README.md
-git -C .\workspaces\calculator -c user.name="Don Codino" -c user.email="sample@example.invalid" commit -m "Initialize disposable workspace"
+New-Item -ItemType Directory -Path C:\DonCodinoWorkspaces\calculator-test -Force
+git -C C:\DonCodinoWorkspaces\calculator-test init
 ```
 
 Start the office:
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+Set-Location "C:\Users\susee\VScode Project\Don-Codino"
+.\.venv\Scripts\python.exe -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8765
 ```
 
-Open <http://127.0.0.1:8000>. Health: <http://127.0.0.1:8000/health>. API schema:
-<http://127.0.0.1:8000/openapi.json>. Use **one worker**, without hot reload during active contracts.
+Open <http://127.0.0.1:8765>. Health: <http://127.0.0.1:8765/health>. API schema:
+<http://127.0.0.1:8765/openapi.json>. Use **one worker**, without hot reload during active contracts.
 Stop with Ctrl+C. Never bind this MVP to a public interface; it has no user authentication.
+
+The ASGI entry point is the existing `create_app` factory in `app/main.py`. Use
+`app.main:create_app --factory`; `app.main:app` fails because the module does not define a
+global `app` instance. In VS Code, select **Run Don Codino** in Run and Debug (F5) to use
+the same factory, local virtual environment, and port 8765.
 
 ## Your first contract
 
-1. Select `calculator` as the territory.
+1. Select `calculator-test` as the territory.
 2. Enter: “Build a Python calculator supporting addition, subtraction, multiplication, and
    division, with pytest tests including division by zero.”
 3. Select **Refine the Plan**. Template mode uses the instruction, top-level filenames, fixed
@@ -68,6 +94,17 @@ and records them for inspection; it does not roll back your work. Review and com
 
 All settings are read from the environment or `.env` at startup. Restart after changing them.
 
+For the local Windows workspace root, set this in `.env`:
+
+```dotenv
+DON_WORKSPACE_ROOT=C:/DonCodinoWorkspaces
+```
+
+Only direct child folders with their own `.git` directory appear in the selector. For example,
+initialize `C:\DonCodinoWorkspaces\calculator-test` with `git init` if it is a new project.
+The dashboard loads `GET /api/workspaces` independently of history and tool availability.
+Selection is validated again by the backend; paths outside the root are rejected.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DON_WORKSPACE_ROOT` | `./workspaces` | Allowlisted root; direct child Git repositories appear in the selector |
@@ -83,9 +120,18 @@ top-level filenames are sent to OpenAI; source contents are not uploaded by refi
 are reported, without silently claiming a successful AI result. Codex itself processes project
 context as part of its normal operation and uses its own CLI login.
 
-On Windows, `.cmd`, `.bat`, and PowerShell wrappers are rejected to avoid shell execution. If npm
-installed a `codex.cmd` wrapper, set `DON_CODEX_BINARY` to the actual native `codex.exe`. The VS Code
-Codex extension also includes a native executable; use its installed path if appropriate.
+On Windows, npm `codex.cmd` / `codex.ps1` launchers are resolved to the native `codex.exe`
+in known nested, hoisted, or legacy npm package layouts (x64 and ARM64). The shell wrapper
+is never executed. `DON_CODEX_BINARY=codex` works when npm's launcher directory is on PATH;
+an explicit launcher path or native executable path can also be configured. Missing platform
+packages, failed version checks, and authentication failures produce actionable diagnostics.
+
+The adapter explicitly selects `windows.sandbox="elevated"` because it ignores personal
+configuration. This is the restricted Windows sandbox implementation, not a request to run
+without isolation. If Windows sandbox setup requires interactive administrator approval,
+complete the CLI's supported setup in your own terminal before running a contract. The app
+keeps `approval_policy="never"` and never falls back to unrestricted execution. See the
+[official Windows sandbox documentation](https://learn.chatgpt.com/docs/windows/windows-sandbox).
 
 ## Execution and verification boundaries
 
@@ -114,7 +160,7 @@ sandboxing fail visibly. The application never retries using unrestricted access
 - The MVP verifies Python projects using pytest and Ruff. Extra project dependencies require a
   separately prepared trusted image. Hidden configuration files are intentionally excluded from
   verification. Projects requiring them need a reviewed extension to the snapshot policy.
-- There are no automatic repairs. Revise the plan and explicitly approve a new contract after
+- Legacy contracts have no automatic repairs. Revise the plan and explicitly approve a new contract after
   reviewing and committing or stashing the previous changes.
 
 | Result | Meaning |
@@ -136,6 +182,7 @@ human review of behavior and the generated code.
 | --- | --- | --- |
 | GET | `/health` | Server health |
 | GET | `/api/settings` | Safe configuration, dependencies, and approved workspaces |
+| GET | `/api/workspaces` | Approved root and discovered direct child Git workspaces |
 | POST | `/api/prompts/enhance` | `{request, workspace}` → editable prompt and actual refinement mode |
 | POST | `/api/tasks` | `{request, workspace, prompt, approved: true}` → saved contract |
 | GET | `/api/tasks?limit=50` | Most recent contracts, maximum 100 |

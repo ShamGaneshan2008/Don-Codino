@@ -29,6 +29,19 @@ def test_workspace_rejects_symlink_escape(settings, tmp_path):
         pytest.skip("Creating symlinks requires Windows Developer Mode or privileges")
     with pytest.raises(ValueError):
         settings.workspace("escape")
+    assert "escape" not in {item["name"] for item in settings.discover_workspaces()}
+
+
+def test_workspace_rejects_external_git_metadata(settings, tmp_path):
+    project = settings.workspace_root / "linked-git"
+    project.mkdir()
+    try:
+        (project / ".git").symlink_to(tmp_path, target_is_directory=True)
+    except OSError:
+        pytest.skip("Creating symlinks requires Windows Developer Mode or privileges")
+    with pytest.raises(ValueError):
+        settings.workspace("linked-git")
+    assert "linked-git" not in {item["name"] for item in settings.discover_workspaces()}
 
 
 def test_secrets_are_redacted():

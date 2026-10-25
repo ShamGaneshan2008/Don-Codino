@@ -61,7 +61,7 @@ function contract(id, status = "BLOCKED") {
   };
 }
 
-async function dashboard() {
+async function dashboard({ workspaces = [], historyError = false } = {}) {
   const elements = new Map();
   const get = (id) => {
     if (!elements.has(id)) elements.set(id, element());
@@ -77,10 +77,15 @@ async function dashboard() {
   const context = vm.createContext({
     document: { getElementById: get, querySelectorAll: () => [], createElement: element },
     fetch: async (path) => {
-      if (path === "/api/tasks?limit=100") return response([]);
+      if (path === "/api/tasks?limit=100") {
+        if (historyError) throw new Error("History unavailable");
+        return response([]);
+      }
+      if (path === "/api/workspaces")
+        return response({ workspace_root: "C:/DonCodinoWorkspaces", workspaces });
       if (path === "/api/settings")
         return response({
-          workspaces: [],
+          workspaces,
           workspace_root: "workspaces",
           verification: { message: "blocked" },
           codex: { available: false, message: "Not logged in" },
@@ -103,6 +108,35 @@ async function dashboard() {
   await new Promise(setImmediate);
   return { context, get, sources };
 }
+
+test("discovery populates calculator-test even when history fails", async () => {
+  const path = "C:/DonCodinoWorkspaces/calculator-test";
+  const { get } = await dashboard({
+    workspaces: [{ name: "calculator-test", path }],
+    historyError: true,
+  });
+  assert.equal(get("workspace").children[0].textContent, "calculator-test");
+  assert.equal(get("workspace").children[0].value, path);
+  assert.equal(get("root").textContent, "C:/DonCodinoWorkspaces");
+});
+
+test("selected workspace is sent to refinement and changing it clears approval", async () => {
+  const path = "C:/DonCodinoWorkspaces/calculator-test";
+  const { context, get } = await dashboard({ workspaces: [{ name: "calculator-test", path }] });
+  get("workspace").value = get("workspace").children[0].value;
+  get("request").value = "Build calculator";
+  context.fetch = async (url, options) => {
+    assert.equal(url, "/api/prompts/enhance");
+    assert.equal(JSON.parse(options.body).workspace, path);
+    return response({ mode: "template", prompt: "Calculator plan" });
+  };
+  await get("contract-form").dispatch("submit", { preventDefault() {} });
+  get("approval").checked = true;
+  get("workspace").dispatch("change");
+  assert.equal(get("approval").checked, false);
+  assert.equal(get("plan-panel").hidden, true);
+  assert.equal(get("execute").disabled, true);
+});
 
 test("refinement locks the approved inputs and clears the previous approval", async () => {
   const { context, get } = await dashboard();
@@ -162,4 +196,51 @@ test("an older detail response cannot overwrite a newer verdict", async () => {
   pending.resolve(response(contract("current", "RUNNING")));
   await older;
   assert.match(get("operation-state").textContent, /^PASS/);
+});
+
+test("V2 edits are saved and approved before one execution with explicit repair allowance", async () => {
+  const { context, get } = await dashboard();
+  const writes = [];
+  context.fetch = async (path, options) => {
+    const body = options?.body ? JSON.parse(options.body) : null;
+    if (body) writes.push({ path, body });
+    if (path === "/api/prompts/enhance")
+      return response({
+        mode: "template",
+        prompt: "Saved plan",
+        plan_id: "plan-1",
+        revision: 1,
+        structured: { problem: "Calculator" },
+        context: { languages: { Python: 1 } },
+      });
+    if (path.endsWith("/revisions")) return response({ revision: 2, prompt: "Edited plan" });
+    if (path.endsWith("/approve")) return response({ status: "APPROVED" });
+    if (path.endsWith("/execute")) return response(contract("task-1"));
+    if (path === "/api/tasks/task-1") return response(contract("task-1"));
+    if (path === "/api/tasks?limit=100") return response([]);
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  get("request").value = "Build calculator";
+  get("workspace").value = "calculator";
+  await get("contract-form").dispatch("submit", { preventDefault() {} });
+  get("prompt").value = "Edited plan";
+  get("allow-repair").checked = true;
+  get("approval").checked = true;
+  await get("execute").dispatch("click");
+  assert.deepEqual(
+    writes.map((item) => item.path),
+    [
+      "/api/prompts/enhance",
+      "/api/v1/plans/plan-1/revisions",
+      "/api/v1/plans/plan-1/approve",
+      "/api/v1/plans/plan-1/execute",
+    ],
+  );
+  assert.equal(writes[3].body.revision, 2);
+  assert.equal(writes[3].body.max_repairs, 2);
+  assert.equal(get("approval").checked, false);
+  get("approval").checked = true;
+  await get("execute").dispatch("click");
+  assert.equal(writes.length, 4);
+  assert.match(get("notice").textContent, /Refine a new plan/);
 });

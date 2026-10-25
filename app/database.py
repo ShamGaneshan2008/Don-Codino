@@ -7,12 +7,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from app.records import Records
+
 
 def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-class Store:
+class Store(Records):
     def __init__(self, path: Path):
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,6 +38,7 @@ class Store:
                 );
                 CREATE INDEX IF NOT EXISTS task_events ON events(task_id, id);
             """)
+            self.migrate(db)
 
     @contextmanager
     def connection(self):
@@ -50,12 +53,39 @@ class Store:
 
     def recover(self):
         with self.connection() as db:
+            interrupted = [
+                row["id"] for row in db.execute("SELECT id FROM tasks WHERE status='RUNNING'")
+            ]
+            for task_id in interrupted:
+                previous = db.execute(
+                    "SELECT state FROM task_details WHERE task_id=?", (task_id,)
+                ).fetchone()["state"]
+                db.execute(
+                    "INSERT INTO transitions(task_id,previous,state,created_at,reason) "
+                    "VALUES(?,?,'BLOCKED',?,'Interrupted server; no automatic resume')",
+                    (task_id, previous, now()),
+                )
+                db.execute("UPDATE task_details SET state='BLOCKED' WHERE task_id=?", (task_id,))
+                db.execute(
+                    "INSERT INTO events(task_id,created_at,kind,message) "
+                    "VALUES(?,?,'state','BLOCKED: interrupted execution')",
+                    (task_id, now()),
+                )
             db.execute(
                 "UPDATE tasks SET status='BLOCKED', ended_at=?, message=? WHERE status='RUNNING'",
                 (now(), "Server stopped before completion. Inspect the workspace before retrying."),
             )
+            for task_id in interrupted:
+                db.execute("UPDATE plans SET status='BLOCKED' WHERE task_id=?", (task_id,))
 
-    def create(self, request: str, prompt: str, workspace: str) -> str:
+    def create(
+        self,
+        request: str,
+        prompt: str,
+        workspace: str,
+        plan_id: str | None = None,
+        revision: int | None = None,
+    ) -> str:
         task_id = uuid4().hex
         with self.connection() as db:
             db.execute(
@@ -63,6 +93,9 @@ class Store:
                 "VALUES(?,?,?,?,'RUNNING',0,?)",
                 (task_id, request, prompt, workspace, now()),
             )
+            db.execute("INSERT INTO task_details(task_id,state) VALUES(?,'QUEUED')", (task_id,))
+            if plan_id:
+                self.bind_plan(db, plan_id, revision, task_id, prompt, workspace)
         return task_id
 
     def update(self, task_id: str, **fields):
@@ -82,6 +115,11 @@ class Store:
         columns = ", ".join(f"{key}=?" for key in fields)  # only internal allowlisted columns
         with self.connection() as db:
             db.execute(f"UPDATE tasks SET {columns} WHERE id=?", [*values, task_id])  # noqa: S608
+            if fields.get("status") in {"PASS", "FAIL", "BLOCKED", "CANCELLED"}:
+                db.execute(
+                    "UPDATE plans SET status=? WHERE task_id=?",
+                    ("VERIFIED" if fields["status"] == "PASS" else fields["status"], task_id),
+                )
 
     def event(self, task_id: str, kind: str, message: str):
         with self.connection() as db:

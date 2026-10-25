@@ -40,6 +40,12 @@ jobs:
         run: python -m ruff format --check .
       - name: Tests
         run: python -m pytest -q -W error
+      - name: Dependency consistency (not a vulnerability audit)
+        run: python -m pip check
+      - name: Prepare trusted build tools
+        run: python -m pip install 'setuptools>=75' wheel
+      - name: Build package
+        run: python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist .
       - name: JavaScript syntax
         run: node --check app/static/app.js
       - name: Install frontend formatting tools

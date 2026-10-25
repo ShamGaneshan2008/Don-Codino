@@ -13,9 +13,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app import codex_runner, prompt_engine, verifier
+from app import codex_runner, planning, verifier
+from app.api_v2 import router
 from app.config import Settings
 from app.database import Store
+from app.locks import lease
+from app.request_limits import RequestLimits
 from app.security import redact
 from app.workflow import STAGES, Workflow
 
@@ -40,19 +43,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app):
-        store.recover()
-        yield
-        await workflow.shutdown()
+        with lease(settings.database.with_suffix(".server.lock")):
+            store.recover()
+            try:
+                yield
+            finally:
+                await workflow.shutdown()
 
     app = FastAPI(
         title="Don Codino",
-        version="0.1.0",
+        version="0.2.0-alpha.1",
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
     )
     app.state.store, app.state.workflow = store, workflow
+    # These routes have no nested lifespan/dependencies. Attach concrete APIRoutes
+    # to preserve application.routes introspection on both old and new FastAPI.
+    app.router.routes.extend(router(settings, store, workflow).routes)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]"])
+    app.add_middleware(RequestLimits)
 
     @app.middleware("http")
     async def local_security(request: Request, call_next):
@@ -92,23 +102,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health():
         return {"status": "ok", "application": "Don Codino"}
 
+    @app.get("/api/workspaces")
+    async def workspaces():
+        return {
+            "workspace_root": str(settings.workspace_root),
+            "workspaces": settings.discover_workspaces(),
+        }
+
     @app.get("/api/settings")
     async def configuration():
         codex, isolation = await asyncio.gather(
             codex_runner.availability(settings),
             verifier.availability(settings),
         )
-        choices = []
-        if settings.workspace_root.is_dir():
-            for path in sorted(settings.workspace_root.iterdir()):
-                try:
-                    approved = settings.workspace(str(path))
-                    choices.append({"name": path.name, "path": str(approved)})
-                except (OSError, ValueError):
-                    continue
         return {
             "workspace_root": str(settings.workspace_root),
-            "workspaces": choices,
+            "workspaces": settings.discover_workspaces(),
             "codex": {**codex, "message": redact(codex["message"], settings.api_key)},
             "verification": isolation,
             "timeout_seconds": settings.timeout_seconds,
@@ -120,7 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def enhance(payload: PromptInput):
         path = workspace(payload.workspace)
         try:
-            result = await prompt_engine.enhance(payload.request, path, settings)
+            result = await planning.generate(payload.request, path, settings, store)
             result["prompt"] = redact(result["prompt"], settings.api_key)
             return result
         except (httpx.HTTPError, ValueError, OSError) as exc:
@@ -153,7 +162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/tasks/{task_id}")
     async def detail(task_id: str):
-        return task(task_id)
+        return {**task(task_id), "execution": store.execution(task_id)}
 
     @app.get("/api/tasks/{task_id}/diff")
     async def diff(task_id: str):
